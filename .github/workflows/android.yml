@@ -27,7 +27,7 @@ jobs:
         shell: bash
         run: |
           set -e
-          sdk_root="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          sdk_root="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
           test -n "$sdk_root"
           echo "$sdk_root/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
           echo "$sdk_root/platform-tools" >> "$GITHUB_PATH"
@@ -40,7 +40,9 @@ jobs:
         shell: bash
         run: |
           set -e
+          set +o pipefail
           yes | sdkmanager --licenses >/dev/null
+          set -o pipefail
           sdkmanager --install "platform-tools" "platforms;android-35" "build-tools;35.0.0"
 
       - name: 授予 Wrapper 執行權限
