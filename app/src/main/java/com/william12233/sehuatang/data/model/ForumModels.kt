@@ -193,6 +193,19 @@ data class PostForm(
     val requiresCaptcha: Boolean = false,
 )
 
+data class CheckInForm(
+    val action: String,
+    val method: String,
+    val fields: Map<String, String>,
+    val label: String,
+    val requiresCaptcha: Boolean = false,
+    val sourceUrl: String,
+)
+
+data class CheckInOutcome(
+    val message: String,
+)
+
 sealed interface ForumFailure {
     data class Network(val message: String, val cause: Throwable? = null) : ForumFailure
 

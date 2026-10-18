@@ -1,6 +1,8 @@
 package com.william12233.sehuatang.data.remote
 
 import com.william12233.sehuatang.data.model.ContentBlock
+import com.william12233.sehuatang.data.model.CheckInForm
+import com.william12233.sehuatang.data.model.CheckInOutcome
 import com.william12233.sehuatang.data.model.ForumAttachment
 import com.william12233.sehuatang.data.model.ForumHome
 import com.william12233.sehuatang.data.model.ForumMessage
@@ -370,6 +372,88 @@ object PostFormParser {
                 requiresCaptcha = captcha,
             ),
         )
+    }
+}
+
+object CheckInParser {
+    fun parse(html: String, sourceUrl: String): ForumResult<CheckInForm> {
+        ForumPageClassifier.verificationMessage(html)?.let { message ->
+            return ForumResult.Failure(
+                com.william12233.sehuatang.data.model.ForumFailure.Verification(sourceUrl, message),
+            )
+        }
+        if (ForumPageClassifier.looksLikeLoginPage(html)) {
+            return ForumResult.Failure(com.william12233.sehuatang.data.model.ForumFailure.AuthenticationRequired)
+        }
+        val document = Jsoup.parse(html, sourceUrl)
+        val form = document.select("form").firstOrNull { candidate ->
+            val action = candidate.absUrl("action")
+            val controls = candidate.select("input, button").joinToString(" ") {
+                "${it.attr("name")} ${it.attr("value")} ${it.text()}"
+            }
+            val descriptor = "${action} ${candidate.text()} $controls".lowercase()
+            action.contains("dd_sign", ignoreCase = true) ||
+                descriptor.contains("簽到") ||
+                descriptor.contains("签到") ||
+                descriptor.contains("check-in") ||
+                descriptor.contains("checkin")
+        } ?: return ForumResult.Failure(
+            com.william12233.sehuatang.data.model.ForumFailure.Parse(
+                "簽到頁沒有找到可辨識的提交表單；未猜測任何欄位。",
+            ),
+        )
+        val fields = linkedMapOf<String, String>()
+        form.select("input[type=hidden][name], input[type=submit][name], button[type=submit][name]")
+            .forEach { input -> fields[input.attr("name")] = input.attr("value") }
+        val submitLabel = form.selectFirst("input[type=submit], button[type=submit]")
+            ?.let { it.attr("value").ifBlank { it.text() } }
+            ?.trim()
+            .orEmpty()
+            .ifBlank { "送出簽到" }
+        return ForumResult.Success(
+            CheckInForm(
+                action = form.absUrl("action").ifBlank { sourceUrl },
+                method = form.attr("method").ifBlank { "POST" }.uppercase(),
+                fields = fields,
+                label = submitLabel,
+                requiresCaptcha = form.select("img[src*=captcha], .captcha, [class*=captcha i]").isNotEmpty(),
+                sourceUrl = sourceUrl,
+            ),
+        )
+    }
+
+    fun parseSubmission(html: String, sourceUrl: String): ForumResult<CheckInOutcome> {
+        ForumPageClassifier.verificationMessage(html)?.let { message ->
+            return ForumResult.Failure(
+                com.william12233.sehuatang.data.model.ForumFailure.Verification(sourceUrl, message),
+            )
+        }
+        if (ForumPageClassifier.looksLikeLoginPage(html)) {
+            return ForumResult.Failure(com.william12233.sehuatang.data.model.ForumFailure.AuthenticationRequired)
+        }
+        val document = Jsoup.parse(html, sourceUrl)
+        val bodyText = document.text().trim()
+        val errorText = document.select(".alert_error, .error, .notice, .tip_c, .warning").text().trim()
+        if (errorText.isNotBlank() && Regex("錯誤|失败|失敗|禁止|不足|驗證碼|error|failed", RegexOption.IGNORE_CASE)
+                .containsMatchIn(errorText)
+        ) {
+            return ForumResult.Failure(
+                com.william12233.sehuatang.data.model.ForumFailure.PermissionDenied(errorText.take(240)),
+            )
+        }
+        val success = Regex(
+            "簽到成功|签到成功|已簽到|已签到|恭喜[^。.!！]{0,40}(?:簽到|签到)|check[- ]?in[^.]{0,40}success|success",
+            RegexOption.IGNORE_CASE,
+        ).find(bodyText)?.value
+        return if (success != null) {
+            ForumResult.Success(CheckInOutcome(success.take(240)))
+        } else {
+            ForumResult.Failure(
+                com.william12233.sehuatang.data.model.ForumFailure.Parse(
+                    "伺服器回應未包含可確認的簽到成功結果，未顯示成功。",
+                ),
+            )
+        }
     }
 }
 

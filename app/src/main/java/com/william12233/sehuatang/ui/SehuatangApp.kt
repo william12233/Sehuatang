@@ -47,6 +47,7 @@ import com.william12233.sehuatang.ui.login.LoginScreen
 import com.william12233.sehuatang.ui.messages.MessagesScreen
 import com.william12233.sehuatang.ui.messages.MessageConversationScreen
 import com.william12233.sehuatang.ui.profile.ProfileScreen
+import com.william12233.sehuatang.ui.profile.CheckInScreen
 import com.william12233.sehuatang.ui.search.SearchScreen
 import com.william12233.sehuatang.ui.thread.ThreadDetailScreen
 import com.william12233.sehuatang.ui.verification.VerificationScreen
@@ -150,6 +151,7 @@ fun SehuaTangApp(
                             "login" -> "登入論壇"
                             "composer" -> "原生編輯器"
                             "conversation" -> "私訊對話"
+                            "check-in" -> "論壇簽到"
                             "verification" -> "站點驗證"
                             else -> selectedTab.label
                         },
@@ -291,6 +293,11 @@ fun SehuaTangApp(
                     },
                     onOpenThread = { openThread(it) },
                     onOpenDownloads = onOpenDownloads,
+                    onOpenCheckIn = {
+                        previousRoute = AppTab.PROFILE.route
+                        route = "check-in"
+                        forumViewModel.loadCheckIn()
+                    },
                     onRemoveBookmark = appViewModel::removeBookmark,
                     onClearHistory = appViewModel::clearRecentVisits,
                     onClearSession = forumViewModel::clearSession,
@@ -379,6 +386,15 @@ fun SehuaTangApp(
                     onRetry = { forumViewModel.loadConversation(conversationUrl) },
                     onSubmit = forumViewModel::submitMessage,
                     onVerification = ::openVerification,
+                )
+
+                "check-in" -> CheckInScreen(
+                    formState = forumState.checkInForm,
+                    submitState = forumState.checkInSubmit,
+                    onLoad = forumViewModel::loadCheckIn,
+                    onSubmit = forumViewModel::submitCheckIn,
+                    onVerification = ::openVerification,
+                    onBack = ::goBack,
                 )
 
                 "verification" -> forumState.verification?.let { request ->

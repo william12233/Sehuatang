@@ -45,6 +45,7 @@ sehuatang.org
 - 登入：Compose 表單從論壇實際登入 HTML 取得欄位與 hidden token；不把密碼寫入本機。
 - 發文/回覆：Compose 編輯器從實際表單取得 action、method、hidden 欄位、formhash、正文/標題/附件欄位，支援 multipart 附件；只有伺服器回應可確認成功時才顯示成功。
 - 附件：原生附件卡片、必要時隔離驗證、Android DownloadManager、Cookie/Referer/MIME/HTML 誤下載檢查。
+- 簽到：原生簽到畫面會先解析論壇實際表單，只提交伺服器回傳的欄位，並要求使用者明確點擊；未確認成功文字時不會報成功。
 - 私訊：原生列表與未讀狀態模型；背景常駐輪詢與推播尚未加入。
 - 外觀：Material 3、繁體中文、淺/深色、系統動態色可選、單一底部導覽列：首頁／版區／搜尋／訊息／我的。
 
@@ -77,6 +78,6 @@ Debug APK：`app/build/outputs/apk/debug/app-debug.apk`
 2. 使用者在 App 內自行登入，確認 Cookie、CSRF/formhash、安全提問與保持登入。
 3. 在測試版區驗證回覆/發文、附件 multipart、權限錯誤、積分與伺服器成功回應。
 4. 真人完成第三方附件驗證後，確認短效下載網址、Content-Disposition 與 Android 檔案內容。
-5. 登入後私訊對話詳情、通知、收藏/簽到與 Samsung Galaxy S23 Ultra/不同螢幕比例的實機驗收。
+5. 登入後私訊對話詳情、通知、收藏/簽到表單與 Samsung Galaxy S23 Ultra/不同螢幕比例的實機驗收。
 
 本專案不會自動使用帳號發表文章、回覆、簽到或其他論壇操作，也不會繞過 CAPTCHA、人機驗證或下載限制。

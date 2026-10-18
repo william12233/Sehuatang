@@ -112,4 +112,28 @@ class ForumParserTest {
         assertEquals("subject_line", postForm.titleField)
         assertEquals("xyz", postForm.hiddenFields["formhash"])
     }
+
+    @Test
+    fun checkInUsesOnlyReturnedFormFieldsAndConfirmsPositiveResponse() {
+        val formResult = CheckInParser.parse(
+            """
+            <form action="plugin.php?id=dd_sign:sign" method="post">
+              <input type="hidden" name="formhash" value="sign-token" />
+              <input type="hidden" name="handlekey" value="signin" />
+              <button type="submit" name="submit_sign" value="1">簽到</button>
+            </form>
+            """.trimIndent(),
+            "https://www.sehuatang.org/plugin.php?id=dd_sign:index",
+        )
+        assertTrue(formResult is ForumResult.Success)
+        val form = (formResult as ForumResult.Success).value
+        assertEquals("sign-token", form.fields["formhash"])
+        assertEquals("1", form.fields["submit_sign"])
+
+        val success = CheckInParser.parseSubmission(
+            "<div class='tip_c'>簽到成功，今日積分已更新。</div>",
+            form.sourceUrl,
+        )
+        assertTrue(success is ForumResult.Success)
+    }
 }

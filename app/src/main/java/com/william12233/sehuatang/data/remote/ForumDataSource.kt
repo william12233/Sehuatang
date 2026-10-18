@@ -2,6 +2,8 @@ package com.william12233.sehuatang.data.remote
 
 import com.william12233.sehuatang.data.model.ForumFailure
 import com.william12233.sehuatang.data.model.ForumHome
+import com.william12233.sehuatang.data.model.CheckInForm
+import com.william12233.sehuatang.data.model.CheckInOutcome
 import com.william12233.sehuatang.data.model.ForumMessage
 import com.william12233.sehuatang.data.model.ForumConversation
 import com.william12233.sehuatang.data.model.MessageReplyForm
@@ -159,6 +161,29 @@ class ForumDataSource(
 
     suspend fun loadProfile(): ForumResult<UserProfile> =
         get(ForumUrls.MEMBER_HOME, ProfileParser::parse)
+
+    suspend fun loadCheckIn(): ForumResult<CheckInForm> =
+        get(ForumUrls.SIGN_IN, CheckInParser::parse)
+
+    suspend fun submitCheckIn(form: CheckInForm): ForumResult<CheckInOutcome> {
+        val response = try {
+            withContext(Dispatchers.IO) {
+                if (form.method == "GET") {
+                    http.get(buildGetUrl(form.action, form.fields), form.sourceUrl)
+                } else {
+                    http.postForm(form.action, form.fields, form.sourceUrl)
+                }
+            }
+        } catch (error: Exception) {
+            return ForumResult.Failure(ForumFailure.Network(error.message ?: "簽到網路連線失敗", error))
+        }
+        if (response.code == 401) return ForumResult.Failure(ForumFailure.AuthenticationRequired)
+        if (response.code == 403) return ForumResult.Failure(ForumFailure.PermissionDenied("目前帳號沒有簽到權限"))
+        if (response.code !in 200..299) {
+            return ForumResult.Failure(ForumFailure.Http(response.code, "論壇未接受簽到請求"))
+        }
+        return CheckInParser.parseSubmission(response.body, response.finalUrl)
+    }
 
     fun cookieHeader(url: String): String? = http.cookieHeader(url)
 

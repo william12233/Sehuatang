@@ -6,6 +6,8 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.william12233.sehuatang.data.model.ForumFailure
 import com.william12233.sehuatang.data.model.ForumHome
+import com.william12233.sehuatang.data.model.CheckInForm
+import com.william12233.sehuatang.data.model.CheckInOutcome
 import com.william12233.sehuatang.data.model.ForumMessage
 import com.william12233.sehuatang.data.model.ForumConversation
 import com.william12233.sehuatang.data.model.MessageReplyForm
@@ -56,6 +58,8 @@ data class ForumUiState(
     val replyForm: AsyncState<PostForm> = AsyncState.Idle,
     val submit: AsyncState<Unit> = AsyncState.Idle,
     val session: SessionUiState = SessionUiState(),
+    val checkInForm: AsyncState<CheckInForm> = AsyncState.Idle,
+    val checkInSubmit: AsyncState<CheckInOutcome> = AsyncState.Idle,
     val verification: VerificationRequest? = null,
     val selectedAttachmentNames: List<String> = emptyList(),
 )
@@ -236,6 +240,33 @@ class ForumViewModel(application: Application) : AndroidViewModel(application) {
                 is ForumResult.Failure -> {
                     _state.update { it.copy(profile = AsyncState.Error(result.error)) }
                     captureVerification(result.error) { loadProfile() }
+                }
+            }
+        }
+    }
+
+    fun loadCheckIn() {
+        viewModelScope.launch {
+            _state.update { it.copy(checkInForm = AsyncState.Loading, checkInSubmit = AsyncState.Idle) }
+            when (val result = repository.loadCheckIn()) {
+                is ForumResult.Success -> _state.update { it.copy(checkInForm = AsyncState.Data(result.value)) }
+                is ForumResult.Failure -> {
+                    _state.update { it.copy(checkInForm = AsyncState.Error(result.error)) }
+                    captureVerification(result.error) { loadCheckIn() }
+                }
+            }
+        }
+    }
+
+    fun submitCheckIn() {
+        val form = (_state.value.checkInForm as? AsyncState.Data)?.value ?: return
+        viewModelScope.launch {
+            _state.update { it.copy(checkInSubmit = AsyncState.Loading) }
+            when (val result = repository.submitCheckIn(form)) {
+                is ForumResult.Success -> _state.update { it.copy(checkInSubmit = AsyncState.Data(result.value)) }
+                is ForumResult.Failure -> {
+                    _state.update { it.copy(checkInSubmit = AsyncState.Error(result.error)) }
+                    captureVerification(result.error) { submitCheckIn() }
                 }
             }
         }

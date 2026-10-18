@@ -3,6 +3,8 @@ package com.william12233.sehuatang.data.repository
 import android.content.Context
 import android.net.Uri
 import com.william12233.sehuatang.data.model.ForumHome
+import com.william12233.sehuatang.data.model.CheckInForm
+import com.william12233.sehuatang.data.model.CheckInOutcome
 import com.william12233.sehuatang.data.model.ForumMessage
 import com.william12233.sehuatang.data.model.ForumConversation
 import com.william12233.sehuatang.data.model.MessageReplyForm
@@ -75,6 +77,10 @@ class ForumRepository(context: Context) {
         source.submitMessageReply(form, content)
 
     suspend fun loadProfile(): ForumResult<UserProfile> = source.loadProfile()
+
+    suspend fun loadCheckIn(): ForumResult<CheckInForm> = source.loadCheckIn()
+
+    suspend fun submitCheckIn(form: CheckInForm): ForumResult<CheckInOutcome> = source.submitCheckIn(form)
 
     fun cookieHeader(url: String): String? = source.cookieHeader(url)
 

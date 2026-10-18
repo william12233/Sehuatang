@@ -12,6 +12,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AccountCircle
+import androidx.compose.material.icons.outlined.CheckCircleOutline
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.Info
@@ -55,6 +56,7 @@ fun ProfileScreen(
     onOpenLogin: () -> Unit,
     onOpenThread: (String) -> Unit,
     onOpenDownloads: () -> Unit,
+    onOpenCheckIn: () -> Unit,
     onRemoveBookmark: (String) -> Unit,
     onClearHistory: () -> Unit,
     onClearSession: () -> Unit,
@@ -106,6 +108,14 @@ fun ProfileScreen(
         item { Text("原生功能", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
         item {
             ActionRow(Icons.Outlined.Download, "下載管理", "查看 Android 原生下載進度與檔案", onOpenDownloads)
+        }
+        item {
+            ActionRow(
+                Icons.Outlined.CheckCircleOutline,
+                "簽到",
+                "使用論壇實際表單；需要時由你明確送出",
+                onOpenCheckIn,
+            )
         }
         item {
             Text("收藏", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
