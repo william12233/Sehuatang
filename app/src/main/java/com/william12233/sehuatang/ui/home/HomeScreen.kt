@@ -1,22 +1,24 @@
 package com.william12233.sehuatang.ui.home
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Login
-import androidx.compose.material.icons.outlined.CalendarMonth
-import androidx.compose.material.icons.outlined.ChatBubbleOutline
-import androidx.compose.material.icons.outlined.Forum
+import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Search
-import androidx.compose.material.icons.outlined.Web
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -24,139 +26,129 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.william12233.sehuatang.data.model.ForumHome
+import com.william12233.sehuatang.data.model.ForumSection
+import com.william12233.sehuatang.data.model.ForumThread
 import com.william12233.sehuatang.data.model.RecentVisit
-import com.william12233.sehuatang.web.navigation.ForumUrls
-import com.william12233.sehuatang.web.session.WebTab
+import com.william12233.sehuatang.ui.AsyncState
+import com.william12233.sehuatang.ui.components.LoadingThreadSkeleton
+import com.william12233.sehuatang.ui.components.NativeFailureCard
+import com.william12233.sehuatang.ui.components.SectionCard
+import com.william12233.sehuatang.ui.components.ThreadCard
 
 @Composable
 fun HomeScreen(
+    home: AsyncState<ForumHome>,
     recentVisits: List<RecentVisit>,
-    onOpenWeb: (WebTab, String) -> Unit,
+    onRefresh: () -> Unit,
+    onOpenSection: (ForumSection) -> Unit,
+    onOpenThread: (ForumThread) -> Unit,
+    onOpenRecent: (String) -> Unit,
+    onOpenLogin: () -> Unit,
+    onOpenVerification: () -> Unit,
 ) {
-    Column(
-        modifier = Modifier
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp, vertical = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+    LazyColumn(
+        contentPadding = PaddingValues(horizontal = 18.dp, vertical = 14.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        Surface(
-            color = MaterialTheme.colorScheme.primaryContainer,
-            shape = MaterialTheme.shapes.extraLarge,
-        ) {
-            Column(modifier = Modifier.padding(20.dp)) {
-                Text(
-                    text = "色花堂",
-                    style = MaterialTheme.typography.headlineMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer,
-                )
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    text = "以更順手的 Android 介面，連回論壇原本的登入、閱讀、發文與附件流程。",
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer,
-                )
-                Spacer(Modifier.height(14.dp))
-                Text(
-                    text = "第三方客戶端，非色花堂官方產品",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer,
-                )
-            }
-        }
-
-        Card(
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text(
-                    text = "今日開始",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    text = "登入、驗證碼、發帖、回覆、簽到與附件驗證都由論壇網站處理；App 不會保存明文密碼，也不會繞過人機驗證。",
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-                Spacer(Modifier.height(12.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = { onOpenWeb(WebTab.FORUM, ForumUrls.HOME) }) {
-                        Icon(Icons.Outlined.Forum, contentDescription = null)
-                        Spacer(Modifier.width(6.dp))
-                        Text("開啟論壇")
-                    }
-                    OutlinedButton(onClick = { onOpenWeb(WebTab.PROFILE, ForumUrls.LOGIN) }) {
-                        Icon(Icons.Outlined.Login, contentDescription = null)
-                        Spacer(Modifier.width(6.dp))
-                        Text("登入")
+        item {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = MaterialTheme.shapes.extraLarge,
+                color = MaterialTheme.colorScheme.primaryContainer,
+            ) {
+                Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("色花堂閱讀器", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                    Text(
+                        "以原生介面閱讀論壇資料。網站只提供資料與服務，不會把網站頁面嵌入 App。",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        AssistChip(
+                            onClick = onRefresh,
+                            label = { Text("重新同步") },
+                            leadingIcon = { Icon(Icons.Outlined.Refresh, contentDescription = null) },
+                        )
+                        OutlinedButton(onClick = onOpenLogin) {
+                            Icon(Icons.Outlined.Login, contentDescription = null)
+                            Spacer(Modifier.width(6.dp))
+                            Text("登入")
+                        }
                     }
                 }
             }
         }
 
-        Text(
-            text = "常用入口",
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.Bold,
-        )
-        QuickActionRow(
-            firstIcon = Icons.Outlined.CalendarMonth,
-            firstText = "每日簽到",
-            onFirst = { onOpenWeb(WebTab.PROFILE, ForumUrls.SIGN_IN) },
-            secondIcon = Icons.Outlined.ChatBubbleOutline,
-            secondText = "站內訊息",
-            onSecond = { onOpenWeb(WebTab.MESSAGES, ForumUrls.MESSAGES) },
-        )
-        QuickActionRow(
-            firstIcon = Icons.Outlined.Search,
-            firstText = "論壇搜尋",
-            onFirst = { onOpenWeb(WebTab.SEARCH, ForumUrls.SEARCH) },
-            secondIcon = Icons.Outlined.Web,
-            secondText = "我的主題",
-            onSecond = { onOpenWeb(WebTab.PROFILE, ForumUrls.MY_GUIDE) },
-        )
-
-        if (recentVisits.isNotEmpty()) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
-                Text(
-                    text = "最近瀏覽",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                )
-                Text(
-                    text = "僅儲存在本機",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+        when (home) {
+            AsyncState.Idle, AsyncState.Loading -> item { LoadingThreadSkeleton() }
+            is AsyncState.Error -> item {
+                NativeFailureCard(
+                    failure = home.failure,
+                    onRetry = onRefresh,
+                    onVerification = if (home.failure is com.william12233.sehuatang.data.model.ForumFailure.Verification) {
+                        onOpenVerification
+                    } else null,
                 )
             }
-            recentVisits.take(5).forEach { visit ->
-                TextButton(
-                    modifier = Modifier.fillMaxWidth(),
-                    onClick = { onOpenWeb(WebTab.FORUM, visit.url) },
+
+            is AsyncState.Data -> {
+                val value = home.value
+                if (value.sections.isNotEmpty()) {
+                    item {
+                        Text("版區", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.height(8.dp))
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            items(value.sections.take(12), key = { it.id }) { section ->
+                                SectionMiniCard(section, onClick = { onOpenSection(section) })
+                            }
+                        }
+                    }
+                }
+                if (value.latestThreads.isNotEmpty()) {
+                    item {
+                        Text("最新文章", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    }
+                    items(value.latestThreads, key = { it.id }) { thread ->
+                        ThreadCard(thread, onClick = { onOpenThread(thread) })
+                    }
+                }
+                if (value.popularThreads.isNotEmpty()) {
+                    item {
+                        Text("熱門文章", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    }
+                    itemsIndexed(
+                        value.popularThreads.take(8),
+                        key = { _, thread -> "popular-${thread.id}" },
+                    ) { _, thread -> ThreadCard(thread, onClick = { onOpenThread(thread) }) }
+                }
+                if (value.sections.isEmpty() && value.latestThreads.isEmpty() && value.popularThreads.isEmpty()) {
+                    item { EmptyHomeState(onRefresh) }
+                }
+            }
+        }
+
+        if (recentVisits.isNotEmpty()) {
+            item {
+                Text("最近閱讀", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            }
+            items(recentVisits.take(5), key = { it.url }) { visit ->
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onOpenRecent(visit.url) },
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
                 ) {
-                    Column(modifier = Modifier.weight(1f)) {
+                    Column(modifier = Modifier.padding(14.dp)) {
+                        Text(visit.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Text(
-                            text = visit.title,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            style = MaterialTheme.typography.bodyLarge,
-                        )
-                        Text(
-                            text = visit.url,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
+                            "從本機閱讀紀錄開啟",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -168,42 +160,39 @@ fun HomeScreen(
 }
 
 @Composable
-private fun QuickActionRow(
-    firstIcon: androidx.compose.ui.graphics.vector.ImageVector,
-    firstText: String,
-    onFirst: () -> Unit,
-    secondIcon: androidx.compose.ui.graphics.vector.ImageVector,
-    secondText: String,
-    onSecond: () -> Unit,
-) {
-    Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-        QuickAction(
-            modifier = Modifier.weight(1f),
-            icon = firstIcon,
-            text = firstText,
-            onClick = onFirst,
-        )
-        QuickAction(
-            modifier = Modifier.weight(1f),
-            icon = secondIcon,
-            text = secondText,
-            onClick = onSecond,
-        )
+private fun SectionMiniCard(section: ForumSection, onClick: () -> Unit) {
+    Surface(
+        modifier = Modifier
+            .width(150.dp)
+            .clickable(onClick = onClick),
+        shape = MaterialTheme.shapes.large,
+        tonalElevation = 2.dp,
+        color = MaterialTheme.colorScheme.surfaceVariant,
+    ) {
+        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+            Text(section.name, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(
+                listOfNotNull(section.threadCount?.let { "文章 $it" }, section.postCount?.let { "回覆 $it" })
+                    .joinToString(" · ")
+                    .ifBlank { "版區" },
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }
 
 @Composable
-private fun QuickAction(
-    modifier: Modifier,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    text: String,
-    onClick: () -> Unit,
-) {
-    OutlinedButton(modifier = modifier.height(72.dp), onClick = onClick) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Icon(icon, contentDescription = null)
-            Spacer(Modifier.height(4.dp))
-            Text(text)
-        }
+private fun EmptyHomeState(onRefresh: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 28.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text("論壇目前沒有可顯示的資料", style = MaterialTheme.typography.titleMedium)
+        Text("App 不會用假文章填補內容。", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        OutlinedButton(onClick = onRefresh) { Text("重新載入") }
     }
 }

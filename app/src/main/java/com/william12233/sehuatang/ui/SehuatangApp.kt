@@ -2,298 +2,421 @@
 
 package com.william12233.sehuatang.ui
 
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.RowScope
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.ArrowBack
-import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Forum
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.MailOutline
 import androidx.compose.material.icons.outlined.PersonOutline
+import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.viewinterop.AndroidView
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.william12233.sehuatang.ui.components.WebPageScreen
+import kotlinx.coroutines.launch
+import com.william12233.sehuatang.data.model.ForumAttachment
+import com.william12233.sehuatang.ui.composer.ComposerScreen
+import com.william12233.sehuatang.ui.forum.ForumListScreen
+import com.william12233.sehuatang.ui.forum.ForumSectionsScreen
 import com.william12233.sehuatang.ui.home.HomeScreen
+import com.william12233.sehuatang.ui.login.LoginScreen
+import com.william12233.sehuatang.ui.messages.MessagesScreen
+import com.william12233.sehuatang.ui.messages.MessageConversationScreen
 import com.william12233.sehuatang.ui.profile.ProfileScreen
 import com.william12233.sehuatang.ui.search.SearchScreen
+import com.william12233.sehuatang.ui.thread.ThreadDetailScreen
+import com.william12233.sehuatang.ui.verification.VerificationScreen
+import com.william12233.sehuatang.web.download.DownloadRequest
 import com.william12233.sehuatang.web.download.DownloadProgress
 import com.william12233.sehuatang.web.download.DownloadStatus
 import com.william12233.sehuatang.web.download.DownloadViewModel
-import com.william12233.sehuatang.web.navigation.ForumUrls
-import com.william12233.sehuatang.web.navigation.SafeUrlPolicy
-import com.william12233.sehuatang.web.session.PopupWindowState
-import com.william12233.sehuatang.web.session.WebEvent
-import com.william12233.sehuatang.web.session.WebSessionViewModel
-import com.william12233.sehuatang.web.session.WebTab
 
-private enum class AppTab {
-    HOME,
-    FORUM,
-    SEARCH,
-    MESSAGES,
-    PROFILE,
+private enum class AppTab(val route: String, val label: String) {
+    HOME("home", "首頁"),
+    FORUM("forum", "版區"),
+    SEARCH("search", "搜尋"),
+    MESSAGES("messages", "訊息"),
+    PROFILE("profile", "我的"),
 }
+
+private val mainRoutes = AppTab.entries.map { it.route }.toSet()
 
 @Composable
 fun SehuaTangApp(
     appViewModel: AppViewModel,
-    webSessionViewModel: WebSessionViewModel,
+    forumViewModel: ForumViewModel,
     downloadViewModel: DownloadViewModel,
     onOpenDownloads: () -> Unit,
+    onDownloadAttachment: (DownloadRequest) -> Unit,
+    onOpenExternal: (String) -> Unit,
+    onShareLink: (String) -> Unit,
+    onPickAttachments: () -> Unit,
 ) {
-    var selectedTabName by rememberSaveable { mutableStateOf(AppTab.HOME.name) }
-    var searchWebMode by rememberSaveable { mutableStateOf(false) }
-    var profileWebMode by rememberSaveable { mutableStateOf(false) }
-    val selectedTab = runCatching { AppTab.valueOf(selectedTabName) }.getOrDefault(AppTab.HOME)
-    val recentVisits by appViewModel.recentVisits.collectAsStateWithLifecycle()
+    val appState by appViewModel.recentVisits.collectAsStateWithLifecycle()
     val bookmarks by appViewModel.bookmarks.collectAsStateWithLifecycle()
     val themeMode by appViewModel.themeMode.collectAsStateWithLifecycle()
+    val forumState by forumViewModel.state.collectAsStateWithLifecycle()
     val downloadProgress by downloadViewModel.current.collectAsStateWithLifecycle()
-    val popup by webSessionViewModel.popup.collectAsStateWithLifecycle()
-    val snackbarHostState = androidx.compose.runtime.remember { SnackbarHostState() }
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+    var route by rememberSaveable { mutableStateOf(AppTab.HOME.route) }
+    var previousRoute by rememberSaveable { mutableStateOf(AppTab.HOME.route) }
+    var threadUrl by rememberSaveable { mutableStateOf("") }
+    var conversationUrl by rememberSaveable { mutableStateOf("") }
+    var forumId by rememberSaveable { mutableStateOf(0L) }
+    var verificationReturnRoute by rememberSaveable { mutableStateOf(AppTab.HOME.route) }
+    var attachmentVerificationUrl by rememberSaveable { mutableStateOf("") }
+    var attachmentVerificationMessage by rememberSaveable { mutableStateOf("") }
+    var pendingAttachment by remember { mutableStateOf<ForumAttachment?>(null) }
 
-    LaunchedEffect(webSessionViewModel) {
-        webSessionViewModel.events.collect { event ->
-            when (event) {
-                is WebEvent.Message -> snackbarHostState.showSnackbar(event.text)
-            }
+    val selectedTab = AppTab.entries.firstOrNull { it.route == route } ?: AppTab.HOME
+    val isMainRoute = route in mainRoutes
+
+    fun goToTab(tab: AppTab) {
+        route = tab.route
+        if (tab == AppTab.MESSAGES) forumViewModel.loadMessages()
+    }
+
+    fun openThread(url: String, title: String? = null) {
+        previousRoute = route
+        threadUrl = url
+        route = "thread"
+        title?.let { appViewModel.recordVisit(it, url) }
+        forumViewModel.loadThread(url)
+    }
+
+    fun openVerification() {
+        if (forumState.verification != null) {
+            verificationReturnRoute = route
+            route = "verification"
         }
     }
 
-    fun openWeb(tab: WebTab, url: String) {
-        when (tab) {
-            WebTab.SEARCH -> searchWebMode = true
-            WebTab.PROFILE -> profileWebMode = true
-            else -> Unit
-        }
-        selectedTabName = when (tab) {
-            WebTab.FORUM -> AppTab.FORUM.name
-            WebTab.SEARCH -> AppTab.SEARCH.name
-            WebTab.MESSAGES -> AppTab.MESSAGES.name
-            WebTab.PROFILE -> AppTab.PROFILE.name
-        }
-        webSessionViewModel.open(tab, url)
+    fun enqueueAttachment(attachment: ForumAttachment) {
+        onDownloadAttachment(
+            DownloadRequest(
+                url = attachment.url,
+                userAgent = "Mozilla/5.0 (Linux; Android 14) SehuatangAndroid/1.0",
+                contentDisposition = attachment.fileName,
+                mimeType = attachment.mimeType,
+                referer = threadUrl,
+                cookie = forumViewModel.cookieHeader(attachment.url),
+            ),
+        )
     }
 
-    fun selectWebTab(tab: WebTab) {
-        selectedTabName = when (tab) {
-            WebTab.FORUM -> AppTab.FORUM.name
-            WebTab.SEARCH -> AppTab.SEARCH.name
-            WebTab.MESSAGES -> AppTab.MESSAGES.name
-            WebTab.PROFILE -> AppTab.PROFILE.name
-        }
+    fun goBack() {
+        route = previousRoute.takeIf { it in mainRoutes || it == "thread" || it == "forum-list" } ?: AppTab.HOME.route
     }
 
-    fun showNativeTab(tab: AppTab) {
-        selectedTabName = tab.name
-        when (tab) {
-            AppTab.SEARCH -> searchWebMode = false
-            AppTab.PROFILE -> profileWebMode = false
-            else -> Unit
-        }
-    }
+    BackHandler(enabled = route != "verification" && route != "attachment-verification" && !isMainRoute) { goBack() }
 
-    BackHandler(
-        enabled = popup == null &&
-            ((selectedTab == AppTab.SEARCH && !searchWebMode) ||
-                (selectedTab == AppTab.PROFILE && !profileWebMode)),
-    ) {
-        when (selectedTab) {
-            AppTab.SEARCH, AppTab.PROFILE -> showNativeTab(AppTab.HOME)
-            else -> Unit
-        }
+    LaunchedEffect(forumState.submit) {
+        if (forumState.submit is AsyncState.Data) snackbarHostState.showSnackbar("伺服器已確認送出結果")
     }
 
     Scaffold(
-        snackbarHost = { SnackbarHost(snackbarHostState) },
+        topBar = {
+            TopAppBar(
+                title = {
+                    Text(
+                        when (route) {
+                            "thread" -> "文章"
+                            "forum-list" -> "文章列表"
+                            "login" -> "登入論壇"
+                            "composer" -> "原生編輯器"
+                            "conversation" -> "私訊對話"
+                            "verification" -> "站點驗證"
+                            else -> selectedTab.label
+                        },
+                    )
+                },
+                navigationIcon = if (isMainRoute) {
+                    {}
+                } else if (route == "verification") {
+                    {}
+                } else {
+                    { IconButton(onClick = ::goBack) { Text("返回") } }
+                },
+                actions = {
+                    if (route == AppTab.HOME.route) {
+                        IconButton(onClick = forumViewModel::loadHome) {
+                            Icon(Icons.Outlined.Refresh, contentDescription = "重新整理")
+                        }
+                    }
+                },
+            )
+        },
         bottomBar = {
-            Column {
-                downloadProgress?.let {
-                    DownloadStatusBar(
-                        progress = it,
-                        onOpen = { downloadViewModel.openCurrent() },
-                        onCancel = { downloadViewModel.cancelCurrent() },
-                        onDismiss = { downloadViewModel.dismiss() },
-                    )
-                }
-                NavigationBar {
-                    NavigationItem(
+            if (isMainRoute) {
+                Column {
+                    downloadProgress?.let { progress ->
+                        DownloadStatusBar(
+                            progress = progress,
+                            onOpen = { downloadViewModel.openCurrent() },
+                            onCancel = { downloadViewModel.cancelCurrent() },
+                            onDismiss = { downloadViewModel.dismiss() },
+                        )
+                    }
+                    NavigationBar {
+                        NavigationBarItem(
                         selected = selectedTab == AppTab.HOME,
-                        icon = Icons.Outlined.Home,
-                        label = "首頁",
-                        onClick = { showNativeTab(AppTab.HOME) },
-                    )
-                    NavigationItem(
+                        onClick = { goToTab(AppTab.HOME) },
+                        icon = { Icon(Icons.Outlined.Home, contentDescription = null) },
+                        label = { Text("首頁") },
+                        )
+                        NavigationBarItem(
                         selected = selectedTab == AppTab.FORUM,
-                        icon = Icons.Outlined.Forum,
-                        label = "版區",
-                        onClick = { selectWebTab(WebTab.FORUM) },
-                    )
-                    NavigationItem(
+                        onClick = { goToTab(AppTab.FORUM) },
+                        icon = { Icon(Icons.Outlined.Forum, contentDescription = null) },
+                        label = { Text("版區") },
+                        )
+                        NavigationBarItem(
                         selected = selectedTab == AppTab.SEARCH,
-                        icon = Icons.Outlined.Search,
-                        label = "搜尋",
-                        onClick = { showNativeTab(AppTab.SEARCH) },
-                    )
-                    NavigationItem(
+                        onClick = { goToTab(AppTab.SEARCH) },
+                        icon = { Icon(Icons.Outlined.Search, contentDescription = null) },
+                        label = { Text("搜尋") },
+                        )
+                        NavigationBarItem(
                         selected = selectedTab == AppTab.MESSAGES,
-                        icon = Icons.Outlined.MailOutline,
-                        label = "訊息",
-                        onClick = { selectWebTab(WebTab.MESSAGES) },
-                    )
-                    NavigationItem(
+                        onClick = { goToTab(AppTab.MESSAGES) },
+                        icon = { Icon(Icons.Outlined.MailOutline, contentDescription = null) },
+                        label = { Text("訊息") },
+                        )
+                        NavigationBarItem(
                         selected = selectedTab == AppTab.PROFILE,
-                        icon = Icons.Outlined.PersonOutline,
-                        label = "我的",
-                        onClick = { showNativeTab(AppTab.PROFILE) },
-                    )
+                        onClick = { goToTab(AppTab.PROFILE) },
+                        icon = { Icon(Icons.Outlined.PersonOutline, contentDescription = null) },
+                        label = { Text("我的") },
+                        )
+                    }
                 }
             }
         },
-    ) { paddingValues ->
-        Column(modifier = Modifier.padding(paddingValues)) {
-            when (selectedTab) {
-                AppTab.HOME -> {
-                    NativeTopBar(title = "首頁")
-                    HomeScreen(
-                        recentVisits = recentVisits,
-                        onOpenWeb = ::openWeb,
-                    )
-                }
+        snackbarHost = { SnackbarHost(snackbarHostState) },
+    ) { padding ->
+        Column(modifier = Modifier.padding(padding)) {
+            when (route) {
+                AppTab.HOME.route -> HomeScreen(
+                    home = forumState.home,
+                    recentVisits = appState,
+                    onRefresh = forumViewModel::loadHome,
+                    onOpenSection = { section ->
+                        previousRoute = AppTab.HOME.route
+                        forumId = section.id
+                        route = "forum-list"
+                        forumViewModel.loadForum(section.id)
+                    },
+                    onOpenThread = { openThread(it.url, it.title) },
+                    onOpenRecent = { openThread(it) },
+                    onOpenLogin = {
+                        previousRoute = AppTab.HOME.route
+                        route = "login"
+                        forumViewModel.loadLoginForm()
+                    },
+                    onOpenVerification = ::openVerification,
+                )
 
-                AppTab.FORUM -> {
-                    WebPageScreen(
-                        tab = WebTab.FORUM,
-                        initialUrl = ForumUrls.HOME,
-                        appViewModel = appViewModel,
-                        webSessionViewModel = webSessionViewModel,
-                        onBackAtRoot = { showNativeTab(AppTab.HOME) },
-                    )
-                }
+                AppTab.FORUM.route -> ForumSectionsScreen(
+                    state = forumState.home,
+                    onRetry = forumViewModel::loadHome,
+                    onOpenSection = { section ->
+                        previousRoute = AppTab.FORUM.route
+                        forumId = section.id
+                        route = "forum-list"
+                        forumViewModel.loadForum(section.id)
+                    },
+                    onVerification = ::openVerification,
+                )
 
-                AppTab.SEARCH -> {
-                    if (searchWebMode) {
-                        WebPageScreen(
-                            tab = WebTab.SEARCH,
-                            initialUrl = ForumUrls.SEARCH,
-                            appViewModel = appViewModel,
-                            webSessionViewModel = webSessionViewModel,
-                            onBackAtRoot = { searchWebMode = false },
+                AppTab.SEARCH.route -> SearchScreen(
+                    state = forumState.search,
+                    onSearch = forumViewModel::search,
+                    onOpenThread = { openThread(it) },
+                    onVerification = ::openVerification,
+                )
+
+                AppTab.MESSAGES.route -> MessagesScreen(
+                    state = forumState.messages,
+                    onRetry = forumViewModel::loadMessages,
+                    onLogin = {
+                        previousRoute = AppTab.MESSAGES.route
+                        route = "login"
+                        forumViewModel.loadLoginForm()
+                    },
+                    onVerification = ::openVerification,
+                    onOpenMessage = { message ->
+                        previousRoute = AppTab.MESSAGES.route
+                        conversationUrl = message.url
+                        route = "conversation"
+                        forumViewModel.loadConversation(message.url)
+                    },
+                )
+
+                AppTab.PROFILE.route -> ProfileScreen(
+                    bookmarks = bookmarks,
+                    recentVisits = appState,
+                    themeMode = themeMode,
+                    session = forumState.session,
+                    profile = forumState.profile,
+                    onThemeModeChanged = appViewModel::setThemeMode,
+                    onOpenLogin = {
+                        previousRoute = AppTab.PROFILE.route
+                        route = "login"
+                        forumViewModel.loadLoginForm()
+                    },
+                    onOpenThread = { openThread(it) },
+                    onOpenDownloads = onOpenDownloads,
+                    onRemoveBookmark = appViewModel::removeBookmark,
+                    onClearHistory = appViewModel::clearRecentVisits,
+                    onClearSession = forumViewModel::clearSession,
+                )
+
+                "forum-list" -> ForumListScreen(
+                    state = forumState.forumList,
+                    onRetry = { forumViewModel.loadForum(forumId) },
+                    onOpenThread = { openThread(it) },
+                    onNewThread = { sourceUrl ->
+                        previousRoute = "forum-list"
+                        threadUrl = sourceUrl
+                        route = "composer"
+                        forumViewModel.loadReplyForm(sourceUrl)
+                    },
+                    onPageChange = { page -> forumViewModel.loadForum(forumId, page) },
+                    onVerification = ::openVerification,
+                )
+
+                "thread" -> ThreadDetailScreen(
+                    state = forumState.thread,
+                    onRetry = { forumViewModel.loadThread(threadUrl) },
+                    onReply = { url ->
+                        previousRoute = "thread"
+                        route = "composer"
+                        forumViewModel.loadReplyForm(url)
+                    },
+                    onVerification = ::openVerification,
+                    onOpenLink = onOpenExternal,
+                    onOpenPage = forumViewModel::loadThread,
+                    onShareLink = onShareLink,
+                    onDownload = { attachment ->
+                        if (attachment.requiresVerification) {
+                            pendingAttachment = attachment
+                            attachmentVerificationUrl = attachment.url
+                            attachmentVerificationMessage = "這個附件位於第三方網域；請親自完成驗證，完成後再交給 Android 下載管理。"
+                            verificationReturnRoute = route
+                            route = "attachment-verification"
+                        } else enqueueAttachment(attachment)
+                    },
+                    isBookmarked = appViewModel.isBookmarked(threadUrl),
+                    onToggleBookmark = {
+                        val page = forumState.thread as? AsyncState.Data
+                        page?.value?.thread?.let { thread -> appViewModel.toggleBookmark(thread.title, thread.url) }
+                    },
+                    onDownloadImage = { url ->
+                        onDownloadAttachment(
+                            DownloadRequest(
+                                url = url,
+                                userAgent = "Mozilla/5.0 (Linux; Android 14) SehuatangAndroid/1.0",
+                                contentDisposition = null,
+                                mimeType = "image/*",
+                                referer = threadUrl,
+                                cookie = forumViewModel.cookieHeader(url),
+                            ),
                         )
-                    } else {
-                        NativeTopBar(title = "搜尋")
-                        SearchScreen(onOpenWeb = ::openWeb)
-                    }
-                }
+                    },
+                )
 
-                AppTab.MESSAGES -> {
-                    WebPageScreen(
-                        tab = WebTab.MESSAGES,
-                        initialUrl = ForumUrls.MESSAGES,
-                        appViewModel = appViewModel,
-                        webSessionViewModel = webSessionViewModel,
-                        onBackAtRoot = { showNativeTab(AppTab.HOME) },
+                "login" -> LoginScreen(
+                    state = forumState.loginForm,
+                    onLoad = forumViewModel::loadLoginForm,
+                    onLogin = forumViewModel::login,
+                    onVerification = ::openVerification,
+                    onBack = ::goBack,
+                )
+
+                "composer" -> ComposerScreen(
+                    formState = forumState.replyForm,
+                    submitState = forumState.submit,
+                    onLoadForm = {
+                        val url = (forumState.thread as? AsyncState.Data)?.value?.sourceUrl ?: threadUrl
+                        forumViewModel.loadReplyForm(url)
+                    },
+                    onSubmit = { title, content -> forumViewModel.submitPost(title, content) },
+                    onVerification = ::openVerification,
+                    onPickAttachments = onPickAttachments,
+                    selectedAttachmentLabel = forumState.selectedAttachmentNames.joinToString(", "),
+                    onBack = ::goBack,
+                )
+
+                "conversation" -> MessageConversationScreen(
+                    conversationState = forumState.conversation,
+                    replyFormState = forumState.messageReplyForm,
+                    submitState = forumState.messageSubmit,
+                    onRetry = { forumViewModel.loadConversation(conversationUrl) },
+                    onSubmit = forumViewModel::submitMessage,
+                    onVerification = ::openVerification,
+                )
+
+                "verification" -> forumState.verification?.let { request ->
+                    VerificationScreen(
+                        url = request.url,
+                        message = request.message,
+                        onComplete = { cookie ->
+                            forumViewModel.onVerificationCompleted(request.url, cookie)
+                            route = verificationReturnRoute
+                        },
+                        onBack = {
+                            forumViewModel.dismissVerification()
+                            route = verificationReturnRoute
+                        },
                     )
                 }
 
-                AppTab.PROFILE -> {
-                    if (profileWebMode) {
-                        WebPageScreen(
-                            tab = WebTab.PROFILE,
-                            initialUrl = ForumUrls.MEMBER_HOME,
-                            appViewModel = appViewModel,
-                            webSessionViewModel = webSessionViewModel,
-                            onBackAtRoot = { profileWebMode = false },
-                        )
-                    } else {
-                        NativeTopBar(title = "我的")
-                        ProfileScreen(
-                            bookmarks = bookmarks,
-                            recentVisits = recentVisits,
-                            themeMode = themeMode,
-                            onThemeModeChanged = appViewModel::setThemeMode,
-                            onOpenWeb = ::openWeb,
-                            onOpenDownloads = onOpenDownloads,
-                            onRemoveBookmark = appViewModel::removeBookmark,
-                            onClearHistory = appViewModel::clearRecentVisits,
-                            onClearWebsiteSession = { webSessionViewModel.clearWebsiteSession() },
+                "attachment-verification" -> {
+                    if (attachmentVerificationUrl.isNotBlank()) {
+                        VerificationScreen(
+                            url = attachmentVerificationUrl,
+                            message = attachmentVerificationMessage,
+                            onComplete = { cookie ->
+                                forumViewModel.importVerificationCookies(attachmentVerificationUrl, cookie)
+                                pendingAttachment?.let(::enqueueAttachment)
+                                pendingAttachment = null
+                                attachmentVerificationUrl = ""
+                                route = verificationReturnRoute
+                            },
+                            onBack = {
+                                pendingAttachment = null
+                                attachmentVerificationUrl = ""
+                                route = verificationReturnRoute
+                            },
                         )
                     }
                 }
             }
-        }
-    }
-
-    popup?.let { popupState ->
-        PopupWebViewDialog(
-            popupState = popupState,
-            webSessionViewModel = webSessionViewModel,
-        )
-    }
-}
-
-@Composable
-private fun NativeTopBar(title: String) {
-    TopAppBar(title = { Text(title) })
-}
-
-@Composable
-private fun RowScope.NavigationItem(
-    selected: Boolean,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    label: String,
-    onClick: () -> Unit,
-) {
-    TextButton(
-        modifier = Modifier.weight(1f),
-        onClick = onClick,
-    ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Icon(
-                icon,
-                contentDescription = null,
-                tint = if (selected) MaterialTheme.colorScheme.primary
-                else MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Text(
-                label,
-                style = MaterialTheme.typography.labelSmall,
-                color = if (selected) MaterialTheme.colorScheme.primary
-                else MaterialTheme.colorScheme.onSurfaceVariant,
-            )
         }
     }
 }
@@ -305,97 +428,28 @@ private fun DownloadStatusBar(
     onCancel: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    Surface(tonalElevation = 2.dp) {
-        Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
-                Text(
-                    text = when (progress.status) {
-                        DownloadStatus.SUCCESSFUL -> "下載完成：${progress.fileName}"
-                        DownloadStatus.FAILED -> "下載失敗：網站可能回傳了驗證頁"
-                        else -> "下載中：${progress.fileName}"
-                    },
-                    modifier = Modifier.weight(1f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    style = MaterialTheme.typography.labelMedium,
+    Surface(color = MaterialTheme.colorScheme.surfaceVariant) {
+        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+            Text(
+                when (progress.status) {
+                    DownloadStatus.SUCCESSFUL -> "下載完成：${progress.fileName}"
+                    DownloadStatus.FAILED -> "下載失敗：${progress.fileName}"
+                    else -> "下載中：${progress.fileName}"
+                },
+                style = MaterialTheme.typography.labelMedium,
+            )
+            if (progress.status == DownloadStatus.RUNNING || progress.status == DownloadStatus.PENDING) {
+                LinearProgressIndicator(
+                    progress = { (progress.percent ?: 0) / 100f },
+                    modifier = Modifier.padding(top = 5.dp),
                 )
-                if (progress.status == DownloadStatus.SUCCESSFUL) {
-                    TextButton(onClick = onOpen) { Text("開啟") }
-                } else if (
-                    progress.status == DownloadStatus.PENDING ||
-                    progress.status == DownloadStatus.RUNNING ||
-                    progress.status == DownloadStatus.PAUSED
-                ) {
+            }
+            Row {
+                if (progress.status == DownloadStatus.SUCCESSFUL) TextButton(onClick = onOpen) { Text("開啟") }
+                if (progress.status == DownloadStatus.RUNNING || progress.status == DownloadStatus.PENDING) {
                     TextButton(onClick = onCancel) { Text("取消") }
                 }
-                IconButton(onClick = onDismiss) {
-                    Icon(Icons.Outlined.Close, contentDescription = "關閉下載提示")
-                }
-            }
-            if (progress.status == DownloadStatus.PENDING || progress.status == DownloadStatus.RUNNING) {
-                LinearProgressIndicator(
-                    progress = { (progress.percent?.div(100f) ?: 0f).coerceIn(0f, 1f) },
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun PopupWebViewDialog(
-    popupState: PopupWindowState,
-    webSessionViewModel: WebSessionViewModel,
-) {
-    BackHandler {
-        if (webSessionViewModel.popupCanGoBack()) webSessionViewModel.popupGoBack()
-        else webSessionViewModel.closePopup()
-    }
-    Dialog(
-        onDismissRequest = { webSessionViewModel.closePopup() },
-        properties = DialogProperties(usePlatformDefaultWidth = false),
-    ) {
-        Surface(modifier = Modifier.fillMaxSize()) {
-            Column {
-                TopAppBar(
-                    title = {
-                        Column {
-                            Text(
-                                popupState.title.ifBlank { "新視窗" },
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                            Text(
-                                SafeUrlPolicy.displayHost(popupState.webView.url),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    },
-                    navigationIcon = {
-                        IconButton(
-                            onClick = {
-                                if (webSessionViewModel.popupCanGoBack()) webSessionViewModel.popupGoBack()
-                                else webSessionViewModel.closePopup()
-                            },
-                        ) {
-                            Icon(Icons.Outlined.ArrowBack, contentDescription = "返回")
-                        }
-                    },
-                    actions = {
-                        IconButton(onClick = { webSessionViewModel.closePopup() }) {
-                            Icon(Icons.Outlined.Close, contentDescription = "關閉視窗")
-                        }
-                    },
-                )
-                AndroidView(
-                    factory = { popupState.webView },
-                    modifier = Modifier.fillMaxSize(),
-                )
+                TextButton(onClick = onDismiss) { Text("關閉") }
             }
         }
     }

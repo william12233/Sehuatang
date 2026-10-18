@@ -10,8 +10,6 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.provider.Settings
-import android.webkit.WebView
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -22,19 +20,19 @@ import androidx.activity.viewModels
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.william12233.sehuatang.ui.AppViewModel
+import com.william12233.sehuatang.ui.ForumViewModel
 import com.william12233.sehuatang.ui.SehuaTangApp
 import com.william12233.sehuatang.ui.theme.SehuatangTheme
 import com.william12233.sehuatang.web.download.DownloadRequest
 import com.william12233.sehuatang.web.download.DownloadViewModel
 import com.william12233.sehuatang.web.navigation.SafeUrlPolicy
-import com.william12233.sehuatang.web.session.WebSessionViewModel
 
 class MainActivity : ComponentActivity() {
     private val appViewModel by viewModels<AppViewModel>()
-    private val webSessionViewModel by viewModels<WebSessionViewModel>()
+    private val forumViewModel by viewModels<ForumViewModel>()
     private val downloadViewModel by viewModels<DownloadViewModel>()
 
-    private lateinit var filePickerLauncher: ActivityResultLauncher<String>
+    private lateinit var filePickerLauncher: ActivityResultLauncher<Array<String>>
     private lateinit var requestStorageLauncher: ActivityResultLauncher<String>
     private var pendingDownload: DownloadRequest? = null
     private var receiverRegistered = false
@@ -50,32 +48,20 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG)
 
         filePickerLauncher = registerForActivityResult(
-            ActivityResultContracts.GetMultipleContents(),
+            ActivityResultContracts.OpenMultipleDocuments(),
         ) { uris ->
-            webSessionViewModel.onFilePickerResult(uris)
+            forumViewModel.setSelectedAttachments(uris)
         }
         requestStorageLauncher = registerForActivityResult(
             ActivityResultContracts.RequestPermission(),
         ) { granted ->
             val request = pendingDownload
             pendingDownload = null
-            if (granted && request != null) {
-                enqueueDownload(request)
-            } else if (request != null) {
-                Toast.makeText(this, "未取得儲存權限，下載已取消", Toast.LENGTH_SHORT).show()
-            }
+            if (granted && request != null) enqueueDownload(request)
+            else if (request != null) Toast.makeText(this, "未取得儲存權限，下載已取消", Toast.LENGTH_SHORT).show()
         }
-
-        webSessionViewModel.requestFilePicker = {
-            // SAF 不需要讀取整個儲存空間的權限，網站表單會自行處理檔案欄位。
-            filePickerLauncher.launch("*/*")
-        }
-        webSessionViewModel.requestDownload = ::requestDownload
-        webSessionViewModel.onPageVisited = appViewModel::recordVisit
-        webSessionViewModel.onExternalUri = ::openExternalUri
 
         ContextCompat.registerReceiver(
             this,
@@ -90,36 +76,23 @@ class MainActivity : ComponentActivity() {
             SehuatangTheme(themeMode = themeMode) {
                 SehuaTangApp(
                     appViewModel = appViewModel,
-                    webSessionViewModel = webSessionViewModel,
+                    forumViewModel = forumViewModel,
                     downloadViewModel = downloadViewModel,
                     onOpenDownloads = {
-                        runCatching {
-                            startActivity(Intent(DownloadManager.ACTION_VIEW_DOWNLOADS))
-                        }.onFailure {
-                            Toast.makeText(this, "無法開啟系統下載管理", Toast.LENGTH_SHORT).show()
-                        }
+                        runCatching { startActivity(Intent(DownloadManager.ACTION_VIEW_DOWNLOADS)) }
+                            .onFailure { Toast.makeText(this, "無法開啟系統下載管理", Toast.LENGTH_SHORT).show() }
                     },
+                    onDownloadAttachment = ::requestDownload,
+                    onOpenExternal = ::openExternal,
+                    onShareLink = ::shareLink,
+                    onPickAttachments = { filePickerLauncher.launch(arrayOf("*/*")) },
                 )
             }
         }
     }
 
-    override fun onPause() {
-        webSessionViewModel.onPause()
-        super.onPause()
-    }
-
-    override fun onResume() {
-        super.onResume()
-        webSessionViewModel.onResume()
-    }
-
     override fun onDestroy() {
         if (receiverRegistered) unregisterReceiver(downloadReceiver)
-        webSessionViewModel.requestFilePicker = null
-        webSessionViewModel.requestDownload = null
-        webSessionViewModel.onPageVisited = null
-        webSessionViewModel.onExternalUri = null
         super.onDestroy()
     }
 
@@ -129,10 +102,7 @@ class MainActivity : ComponentActivity() {
             return
         }
         if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.P &&
-            ContextCompat.checkSelfPermission(
-                this,
-                Manifest.permission.WRITE_EXTERNAL_STORAGE,
-            ) != PackageManager.PERMISSION_GRANTED
+            ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED
         ) {
             pendingDownload = request
             requestStorageLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
@@ -143,24 +113,32 @@ class MainActivity : ComponentActivity() {
 
     private fun enqueueDownload(request: DownloadRequest) {
         downloadViewModel.enqueue(request).onFailure { error ->
-            Toast.makeText(
-                this,
-                "下載無法開始：${error.message ?: "請稍後重試"}",
-                Toast.LENGTH_LONG,
-            ).show()
+            Toast.makeText(this, "下載無法開始：${error.message ?: "請稍後重試"}", Toast.LENGTH_LONG).show()
         }
     }
 
-    private fun openExternalUri(uri: Uri) {
+    private fun openExternal(url: String) {
+        val uri = runCatching { Uri.parse(url) }.getOrNull() ?: return
         val scheme = uri.scheme?.lowercase()
-        if (scheme !in setOf("tel", "mailto")) {
+        if (scheme !in setOf("http", "https", "tel", "mailto")) {
             Toast.makeText(this, "已阻止不受支援的外部連結", Toast.LENGTH_SHORT).show()
             return
         }
+        runCatching { startActivity(Intent(Intent.ACTION_VIEW, uri)) }
+            .onFailure { Toast.makeText(this, "裝置沒有可處理此連結的應用程式", Toast.LENGTH_SHORT).show() }
+    }
+
+    private fun shareLink(url: String) {
         runCatching {
-            startActivity(Intent(Intent.ACTION_VIEW, uri))
-        }.onFailure {
-            Toast.makeText(this, "裝置沒有可處理此連結的應用程式", Toast.LENGTH_SHORT).show()
-        }
+            startActivity(
+                Intent.createChooser(
+                    Intent(Intent.ACTION_SEND).apply {
+                        type = "text/plain"
+                        putExtra(Intent.EXTRA_TEXT, url)
+                    },
+                    "分享文章",
+                ),
+            )
+        }.onFailure { Toast.makeText(this, "無法開啟分享功能", Toast.LENGTH_SHORT).show() }
     }
 }

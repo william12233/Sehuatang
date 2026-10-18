@@ -49,7 +49,7 @@ data class DownloadProgress(
 
 /**
  * 以系統 DownloadManager 處理人工驗證後的短效下載連結。
- * Cookie 只取該 URL 對應的 WebView Cookie，並以請求標頭傳入，不做跨網域共用。
+ * Cookie 由原生 HTTP 工作階段按 URL 傳入，不做跨網域共用。
  */
 class DownloadController(context: Context) {
     private val appContext = context.applicationContext
