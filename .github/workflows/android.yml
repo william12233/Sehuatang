@@ -1,0 +1,44 @@
+name: Android CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: 建置 Debug APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: 取得原始碼
+        uses: actions/checkout@v4
+
+      - name: 設定 Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: 設定 Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: 安裝必要 SDK 套件
+        run: sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+
+      - name: 授予 Wrapper 執行權限
+        run: chmod +x ./gradlew
+
+      - name: 執行單元測試並建置 Debug
+        run: ./gradlew testDebugUnitTest compileDebugAndroidTestKotlin assembleDebug --stacktrace --no-daemon
+
+      - name: 上傳 Debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: sehuatang-debug-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
